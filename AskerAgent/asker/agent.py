@@ -6,8 +6,15 @@ __docformat__ = 'reStructuredText'
 
 import logging
 import sys
+import numpy as np
+import time
+import random
 from volttron.platform.agent import utils
-from volttron.platform.vip.agent import Agent, Core, RPC
+from volttron.platform.vip.agent import Agent, Core
+from volttron.platform.transactions.topics import DEMAND_BID_TOPIC, BID_OFFER_TOPIC, MARKET_CLEARING_TOPIC, MARKET_STATE_TOPIC
+from volttron.platform.transactions.auction import Auction
+from volttron.platform.transactions.poly_line import PolyLine
+from volttron.platform.transactions.point import Point
 
 _log = logging.getLogger(__name__)
 utils.setup_logging()
@@ -15,128 +22,95 @@ __version__ = "0.1"
 
 
 def asker(config_path, **kwargs):
-    """
-    Parses the Agent configuration and returns an instance of
-    the agent created using that configuration.
-
-    :param config_path: Path to a configuration file.
-    :type config_path: str
-    :returns: Asker
-    :rtype: Asker
-    """
     try:
         config = utils.load_config(config_path)
     except Exception:
         config = {}
 
+    name = config.get("name", "AskerAgent")
+
     if not config:
         _log.info("Using Agent defaults for starting configuration.")
 
-    setting1 = int(config.get('setting1', 1))
-    setting2 = config.get('setting2', "some/random/topic")
-
-    return Asker(setting1, setting2, **kwargs)
+    return Asker(name, **kwargs)
 
 
 class Asker(Agent):
-    """
-    Document agent constructor here.
-    """
-
-    def __init__(self, setting1=1, setting2="some/random/topic", **kwargs):
+    def __init__(self, name="AskerAgent", **kwargs):
         super(Asker, self).__init__(**kwargs)
-        _log.debug("vip_identity: " + self.core.identity)
-
-        self.setting1 = setting1
-        self.setting2 = setting2
-
-        self.default_config = {"setting1": setting1,
-                               "setting2": setting2}
-
-        # Set a default configuration to ensure that self.configure is called immediately to setup
-        # the agent.
-        self.vip.config.set_default("config", self.default_config)
-        # Hook self.configure up to changes to the configuration file "config".
-        self.vip.config.subscribe(self.configure, actions=["NEW", "UPDATE"], pattern="config")
-
-    def configure(self, config_name, action, contents):
-        """
-        Called after the Agent has connected to the message bus. If a configuration exists at startup
-        this will be called before onstart.
-
-        Is called every time the configuration in the store changes.
-        """
-        config = self.default_config.copy()
-        config.update(contents)
-
-        _log.debug("Configuring Agent")
-
-        try:
-            setting1 = int(config["setting1"])
-            setting2 = str(config["setting2"])
-        except ValueError as e:
-            _log.error("ERROR PROCESSING CONFIGURATION: {}".format(e))
-            return
-
-        self.setting1 = setting1
-        self.setting2 = setting2
-
-        self._create_subscriptions(self.setting2)
-
-    def _create_subscriptions(self, topic):
-        """
-        Unsubscribe from all pub/sub topics and create a subscription to a topic in the configuration which triggers
-        the _handle_publish callback
-        """
-        self.vip.pubsub.unsubscribe("pubsub", None, None)
-
-        self.vip.pubsub.subscribe(peer='pubsub',
-                                  prefix=topic,
-                                  callback=self._handle_publish)
-
-    def _handle_publish(self, peer, sender, bus, topic, headers, message):
-        """
-        Callback triggered by the subscription setup using the topic from the agent's config file
-        """
-        pass
+        self.name = "askeragent-0.1_1"
+        self.ids = ["bidderagent-0.1_1"]
+        self.bids_count = len(self.ids)
+        self.auction = Auction(name)
+        self.curve = PolyLine()
 
     @Core.receiver("onstart")
     def onstart(self, sender, **kwargs):
-        """
-        This is method is called once the Agent has successfully connected to the platform.
-        This is a good place to setup subscriptions if they are not dynamic or
-        do any other startup activities that require a connection to the message bus.
-        Called after any configurations methods that are called at startup.
+        # subsribing to needed topics
+        self.vip.pubsub.subscribe(
+            peer="pubsub",
+            prefix=BID_OFFER_TOPIC,
+            callback=self.bid_offer_callback
+        )       
+        self.vip.pubsub.subscribe(
+            peer="pubsub",
+            prefix=MARKET_STATE_TOPIC, 
+            callback=self.market_state_callback
+        )
+        # starting trading process: sending P-Q polyline to all bidders
+        self.update_curve()
+        msg = {}
+        msg["from"] = self.name
+        msg["to"] = "all"
+        msg["data"] = self.curve.vectorize()
+        self.vip.pubsub.publish(
+            peer="pubusb",
+            topic=DEMAND_BID_TOPIC,
+            message=msg
+        )
 
-        Usually not needed if using the configuration store.
-        """
-        # Example publish to pubsub
-        self.vip.pubsub.publish('pubsub', "some/random/topic", message="HI!")
+    def update_curve(self):
+        quants = np.linspace(0, 2, 10)
+        prices = -1 * quants + 2
+        if self.curve.points:
+            self.curve.delete()
+        for p, q in zip(prices, quants):
+            self.curve.add(Point(q, p))
 
-        # Example RPC call
-        # self.vip.rpc.call("some_agent", "some_method", arg1, arg2)
-        pass
+    def bid_offer_callback(self, peer, sender, bus, topic, headers, message):
+        # here we are begin performing SPSBA to take market winners...
+        msg = {}
+        msg["from"] = self.name 
+        msg["to"] = message["from"]
+        msg["data"] = [1.0 + random.random(), 6.0 + random.random()]
+        # ...and send SPSBA results to bidders
+        self.vip.pubsub.publish(
+            peer="pubsub", 
+            topic=MARKET_CLEARING_TOPIC,
+            message=msg
+        )
 
-    @Core.receiver("onstop")
-    def onstop(self, sender, **kwargs):
-        """
-        This method is called when the Agent is about to shutdown, but before it disconnects from
-        the message bus.
-        """
-        pass
-
-    @RPC.export
-    def rpc_method(self, arg1, arg2, kwarg1=None, kwarg2=None):
-        """
-        RPC method
-
-        May be called from another agent via self.core.rpc.call
-        """
-        return self.setting1 + arg1 - arg2
+    def market_state_callback(self, peer, sender, bus, topic, headers, message):
+        # check sender's ID
+        if message["from"] in self.ids and message["data"] == "Accepted":
+            self.bids_count -= 1
+        # beginning trading process again
+        if self.bids_count == 0:   
+            self.bids_count = len(self.ids)
+            time.sleep(5.0)
+            self.update_curve()
+            msg = {}
+            msg["from"] = self.name
+            msg["to"] = "all"
+            msg["data"] = self.curve.vectorize()
+            self.vip.pubsub.publish(
+                peer="pubusb",
+                topic=DEMAND_BID_TOPIC,
+                message=msg
+            )
 
 
 def main():
-    """Main method called to start the agent."""
     utils.vip_main(asker, 
                    version=__version__)
 

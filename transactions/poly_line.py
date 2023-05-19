@@ -1,4 +1,4 @@
-from point import Point
+from volttron.platform.transactions.point import Point
 
 class PolyLine:
     def __init__(self) -> None:
@@ -10,19 +10,17 @@ class PolyLine:
 
     def normalize(self, p_coeff: float, q_coeff: float) -> None:
         for point in self.points:
-            self.norm_points.append(Point(point.x*p_coeff, point.y*q_coeff))
-
-    def get_prices(self) -> list:
-        prices_tmp = []
+            self.norm_points.append(Point(point.p*p_coeff, point.q*q_coeff))
+    
+    def vectorize(self) -> list:
+        output = []
         for point in self.points:
-            prices_tmp.append(point.x)
-        return prices_tmp
+            output.append([point.q, point.p])
+        return output
 
-    def get_quants(self) -> list:
-        quants_tmp = []
-        for point in self.points:
-            quants_tmp.append(point.y)
-        return quants_tmp
+    def delete(self) -> None:
+        self.points.clear()
+        self.norm_points.clear()
 
     def is_empty(self) -> bool:
         return len(self.points) == 0
