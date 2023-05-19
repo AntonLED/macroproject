@@ -34,12 +34,15 @@ def asker(config_path, **kwargs):
 class Asker(Agent):
     def __init__(self, name="BidderAgent", **kwargs):
         super(Asker, self).__init__(**kwargs)
-        self.name = "bidderagent-0.1_1"
+        self.name = name
         self.ids = ["askeragent-0.1_1"]
         self.asks_count = len(self.ids)
 
     @Core.receiver("onstart")
     def onstart(self, sender, **kwargs):
+        """
+        Here we are making some routine while agent starting
+        """
         # subsribing to needed topics
         self.vip.pubsub.subscribe(
             peer="pubsub",
@@ -59,15 +62,16 @@ class Asker(Agent):
         Then, we should perform MPO optimization and 
         send results to THIS asker.   
         """
-        msg = {}
-        msg["from"] = self.name
-        msg["to"] = message["from"]
-        msg["data"] = self.perform_mpo()
-        self.vip.pubsub.publish(
-            peer="pubusb",
-            topic=BID_OFFER_TOPIC,
-            message=msg
-        )
+        if message["from"] in self.ids and message["to"] == "all":
+            msg = {}
+            msg["from"] = self.name
+            msg["to"] = message["from"]
+            msg["data"] = self.perform_mpo()
+            self.vip.pubsub.publish(
+                peer="pubusb",
+                topic=BID_OFFER_TOPIC,
+                message=msg
+            )
 
     def market_clearing_callback(self, peer, sender, bus, topic, headers, message):
         """
@@ -77,19 +81,27 @@ class Asker(Agent):
         Then, we should infrom asker that this bidder is recieved this message. 
         This is done for correctly begin transactive cycle by askers again.
         """
-        msg = {}
-        msg["from"] = self.name
-        msg["to"] = message["from"]
-        msg["data"] = "Accepted"
-        self.vip.pubsub.publish(
-            peer="pubusb",
-            topic=MARKET_STATE_TOPIC,
-            message=msg
-        )
+        if message["from"] in self.ids and message["to"] == self.name:
+            msg = {}
+            msg["from"] = self.name
+            msg["to"] = message["from"]
+            msg["data"] = "Accepted"
+            self.vip.pubsub.publish(
+                peer="pubusb",
+                topic=MARKET_STATE_TOPIC,
+                message=msg
+            )
 
     def perform_mpo(self):
-        return [random.random()]
+        """
+        Here we are solving Markorviz Portfolio Optimization problem and returns results
+        """
+        return [1.0 + random.random(), -1.0 + random.random()]
 
+    def report(self, message):
+        _log.debug("\n\n\n\n\n")
+        _log.debug(self.name + "___" + "in method ---> " + message)
+        _log.debug("\n\n\n\n\n")
 
 def main():
     utils.vip_main(asker, 
