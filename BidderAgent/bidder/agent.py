@@ -35,8 +35,6 @@ class Asker(Agent):
     def __init__(self, name="BidderAgent", **kwargs):
         super(Asker, self).__init__(**kwargs)
         self.name = name
-        self.ids = ["askeragent-0.1_1"]
-        self.asks_count = len(self.ids)
 
     @Core.receiver("onstart")
     def onstart(self, sender, **kwargs):
@@ -54,6 +52,11 @@ class Asker(Agent):
             prefix=MARKET_CLEARING_TOPIC, 
             callback=self.market_clearing_callback
         )
+        self.vip.pubsub.subscribe(
+            peer="pubsub",
+            prefix=MARKET_STATE_TOPIC,
+            callback=self.market_state_callback
+        )
 
     def demand_bid_callback(self, peer, sender, bus, topic, headers, message):
         """
@@ -62,7 +65,7 @@ class Asker(Agent):
         Then, we should perform MPO optimization and 
         send results to THIS asker.   
         """
-        if message["from"] in self.ids and message["to"] == "all":
+        if message["to"] == "all":
             msg = {}
             msg["from"] = self.name
             msg["to"] = message["from"]
@@ -81,27 +84,17 @@ class Asker(Agent):
         Then, we should infrom asker that this bidder is recieved this message. 
         This is done for correctly begin transactive cycle by askers again.
         """
-        if message["from"] in self.ids and message["to"] == self.name:
-            msg = {}
-            msg["from"] = self.name
-            msg["to"] = message["from"]
-            msg["data"] = "Accepted"
-            self.vip.pubsub.publish(
-                peer="pubusb",
-                topic=MARKET_STATE_TOPIC,
-                message=msg
-            )
+        pass
+
+    def market_state_callback(self, peer, sender, bus, topic, headers, message):
+        pass
 
     def perform_mpo(self):
         """
         Here we are solving Markorviz Portfolio Optimization problem and returns results
         """
         return [1.0 + random.random(), -1.0 + random.random()]
-
-    def report(self, message):
-        _log.debug("\n\n\n\n\n")
-        _log.debug(self.name + "___" + "in method ---> " + message)
-        _log.debug("\n\n\n\n\n")
+    
 
 def main():
     utils.vip_main(asker, 

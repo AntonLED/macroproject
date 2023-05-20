@@ -10,11 +10,14 @@ import numpy as np
 import time
 import random
 from volttron.platform.agent import utils
-from volttron.platform.vip.agent import Agent, Core
+from volttron.platform.vip.agent import Agent, Core, PubSub
 from volttron.platform.transactions.topics import DEMAND_BID_TOPIC, BID_OFFER_TOPIC, MARKET_CLEARING_TOPIC, MARKET_STATE_TOPIC
 from volttron.platform.transactions.auction import Auction
 from volttron.platform.transactions.poly_line import PolyLine
 from volttron.platform.transactions.point import Point
+
+IDLE = False
+INGAME = True
 
 _log = logging.getLogger(__name__)
 utils.setup_logging()
@@ -39,29 +42,75 @@ class Asker(Agent):
     def __init__(self, name="AskerAgent", **kwargs):
         super(Asker, self).__init__(**kwargs)
         self.name = name
-        self.ids = ["bidderagent-0.1_1"]
-        self.bids_count = len(self.ids)
+        self.is_scheduler = False
+        self.state = IDLE
         self.auction = Auction(name)
         self.curve = PolyLine()
         self.bid_offer_results = {}
+        self.market_clearing_results = {}
 
     @Core.receiver("onstart")
     def onstart(self, sender, **kwargs):
         """
         Here we are making some routine while agent starting
         """
-        # subsribing to needed topics
-        self.vip.pubsub.subscribe(
-            peer="pubsub",
-            prefix=BID_OFFER_TOPIC,
-            callback=self.bid_offer_callback
-        )       
-        self.vip.pubsub.subscribe(
-            peer="pubsub",
-            prefix=MARKET_STATE_TOPIC, 
-            callback=self.market_state_callback
-        )
-        # starting trading process: sending P-Q polyline to all bidders
+### THIS ONLY IF THIS AGENT IS FIRST
+        self.vip.pubsub.publish(        #
+            peer="pubusb",              #
+            topic=MARKET_STATE_TOPIC,   #   
+            message="demand-bid"        #
+        )                               #
+### THIS SECTION IS SKIPPED IN OTHER CASES
+
+    @PubSub.subscribe("pubsub", BID_OFFER_TOPIC)
+    def bid_offer_callback(self, peer, sender, bus, topic, headers, message):
+        self.bid_offer_results[message["from"]] = [message["data"][0], message["data"][1]] 
+        # here we are begin performing SPSBA to take market winners...
+            # ...
+        # ...and send SPSBA results to bidders
+        self.market_clearing_results[message["from"]] = [1.0 + random.random(), 6.0 + random.random()]
+
+    @PubSub.subscribe("pubsub", MARKET_STATE_TOPIC)
+    def market_state_callback(self, peer, sender, bus, topic, headers, message):
+        if sender == self.name:
+            self.is_scheduler = True
+        else:
+            self.is_scheduler = False
+        if message == "demand-bid":
+            # where begin the trading cycle 
+            self.state = INGAME
+            self.demand_bid_trigger()
+            if self.is_scheduler:
+                time.sleep(5.0)
+                self.vip.pubsub.publish(
+                    peer="pubusb",
+                    topic=MARKET_STATE_TOPIC,
+                    message="bid-offer"
+                )                
+        elif message == "bid-offer":
+            # where we are waiting for response from bidders
+            self.bid_offer_trigger()
+            if self.is_scheduler:
+                time.sleep(5.0)
+                self.vip.pubsub.publish(
+                    peer="pubusb",
+                    topic=MARKET_STATE_TOPIC,
+                    message="market-clearing"
+                )  
+        elif message == "market-clearing":
+        # were we are sending market clearing messages
+            self.market_clearing_trigger()
+
+    def update_curve(self):
+        quants = np.linspace(0, 2, 10)
+        prices = -1 * quants + 2
+        if self.curve.points:
+            self.curve.delete()
+        for p, q in zip(prices, quants):
+            self.curve.add(Point(q, p))
+
+    def demand_bid_trigger(self):
+    # starting trading process: sending P-Q polyline to all bidders
         self.update_curve()
         msg = {}
         msg["from"] = self.name
@@ -73,58 +122,29 @@ class Asker(Agent):
             message=msg
         )
 
-    def update_curve(self):
-        quants = np.linspace(0, 2, 10)
-        prices = -1 * quants + 2
-        if self.curve.points:
-            self.curve.delete()
-        for p, q in zip(prices, quants):
-            self.curve.add(Point(q, p))
+    def bid_offer_trigger(self):
+        pass
 
-# вот тут прежде чем проводить аукцион, надо собрать заявки со всех
-    def bid_offer_callback(self, peer, sender, bus, topic, headers, message):
-        if message["from"] in self.ids and message["to"] == self.name:
-            self.bids_count -= 1                      
-            self.bid_offer_results[message["from"]] = [message["data"][0], message["data"][1]] 
-        if self.bids_count == 0:   
-            self.bids_count = len(self.ids)
-            # here we are begin performing SPSBA to take market winners...
-                # ...
-            # ...and send SPSBA results to bidders
-            for bidder_name in self.bid_offer_results.keys():
-                msg = {}
-                msg["from"] = self.name 
-                msg["to"] = bidder_name
-                msg["data"] = [1.0 + random.random(), 6.0 + random.random()]
-                self.vip.pubsub.publish(
-                    peer="pubsub", 
-                    topic=MARKET_CLEARING_TOPIC,
-                    message=msg
-                )
-
-    def market_state_callback(self, peer, sender, bus, topic, headers, message):
-        # check sender's ID
-        if message["from"] in self.ids and message["to"] == self.name and message["data"] == "Accepted":
-            self.bids_count -= 1
-        # beginning trading process again
-        if self.bids_count == 0:   
-            self.bids_count = len(self.ids)
-            time.sleep(5.0)
-            self.update_curve()
+    def market_clearing_trigger(self):
+        for bidder_name in self.market_clearing_results.keys():
             msg = {}
             msg["from"] = self.name
-            msg["to"] = "all"
-            msg["data"] = self.curve.vectorize()
+            msg["to"] = bidder_name
+            msg["data"] = self.market_clearing_results[bidder_name]
             self.vip.pubsub.publish(
                 peer="pubusb",
-                topic=DEMAND_BID_TOPIC,
+                topic=MARKET_CLEARING_TOPIC,
                 message=msg
             )
-
-    def report(self, message):
-        _log.debug("\n\n\n\n\n")
-        _log.debug(self.name + "___" + "in method ---> " + message)
-        _log.debug("\n\n\n\n\n")
+        self.state = IDLE
+        time.sleep(np.random.uniform(1.0, 5.0))
+        # здесь возможно пройдет callback и мы теперь станем не IDLE
+        if self.state == IDLE:
+            self.vip.pubsub.publish(
+                peer="pubusb",
+                topic=MARKET_STATE_TOPIC,
+                message="demand-bid"
+            )
 
 
 def main():
