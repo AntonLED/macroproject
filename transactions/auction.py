@@ -8,7 +8,7 @@ class Auction():
 
     def get_result(self, self_demand_curve: PolyLine, bidders_curves: list[Point]) -> Point:
         try:
-            aggregated_bidders_curve = PolyLine.uniform(bidders_curves)
+            aggregated_bidders_curve = PolyLine.combine_segments(bidders_curves)
             return PolyLine.intersection(self_demand_curve, aggregated_bidders_curve)
         except BaseException:
             return None

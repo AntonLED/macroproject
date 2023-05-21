@@ -2,16 +2,6 @@ import numpy as np
 from volttron.platform.transactions.point import Point
 
 
-def remove(duplicate: list) -> list:
-    final_list = []
-    for num in duplicate:
-        if num not in final_list:
-            final_list.append(num)
-    return final_list
-
-def cmp(a, b):
-    return (a > b) - (a < b)
-
 class PolyLine:
     def __init__(self):
         self.points = []
@@ -34,7 +24,6 @@ class PolyLine:
         doSort = False
         if len(self.points) > 0:
             doSort = True
-
         self.points.append(point)
         if doSort:
             self.points.sort(key=lambda point: point.x, reverse=True)
@@ -46,7 +35,7 @@ class PolyLine:
             self._max_x = PolyLine.max(self._max_x, point.x)
             self._max_y = PolyLine.max(self._max_y, point.y)
 
-    def contains_none(self) -> None:
+    def contains_none(self) -> bool:
         result = False
         if self.points is not None and len(self.points) > 0:
             for p in self.points:
@@ -71,59 +60,21 @@ class PolyLine:
         return max(x1, x2)
 
     @staticmethod
-    def sum(x1, x2):
-        if x1 is None:
-            return x2
-        if x2 is None:
-            return x1
-        return x1 + x2
-
-    @staticmethod
-    def uniform(curves: list[Point]):
-        # we return a new PolyLine which is a composite (summed horizontally) of inputs
+    def combine_segments(segments: list):
         composite = PolyLine()
-        if len(curves) < 2:
-            if isinstance(curves[0], list):
-                for point in curves[0]:
-                    composite.add(Point(point[0], point[1]))
-                return composite
-            return curves[0]
-        # find the range defined by the curves
-        ys=[]
-        for curve in curves:
-            ys = ys + curve.vectorize()[1]
-
-        ys = remove(ys)
-
-        ys.sort(reverse=True)
-        for y in ys:
-            xt = None
-            for curve in curves:
-                x = curve.x(y)
-                if x is not None:
-                    xt = x if xt is None else xt + x
-            composite.add(Point(xt, y))
+        segments.sort(key=lambda segment: segment.min_y())
+        prev_x = 0.0
+        xs = []
+        ys = []
+        for segment in segments:
+            for point in segment.points:
+                xs.append(point.x + prev_x*1.0001)
+                ys.append(point.y)
+            prev_x = max(xs)
+        for x, y in zip(xs, ys):
+            composite.add(Point(x, y))
         return composite
 
-    def x(self, y):
-        if not self.points:
-            return None
-        if y is None:
-            return None
-        self.vectorize()
-        r = np.interp(y, self.ysSortedByY, self.xsSortedByY)
-        return None if np.isnan(r) else r
-
-    def y(self, x):
-        if not self.points:
-            return None
-        if x is None:
-            return None
-        self.vectorize()
-        r = np.interp(x, self.xs, self.ys)
-        return None if np.isnan(r) else r
-
-    # probably replace w/ zip()
     def vectorize(self) -> tuple:
         if not self.points:
             return None, None
@@ -144,16 +95,6 @@ class PolyLine:
                 self.xsSortedByY = self.xs[::-1]
                 self.ysSortedByY = self.ys[::-1]
         return self.xs, self.ys
-
-    def tuppleize(self) -> list:
-        if not self.points:
-            return None
-        ps = [None] * len(self.points)
-        c = 0
-        for p in self.points:
-            ps[c] = p.tuppleize()
-            c += 1
-        return ps
 
     def min_y(self):
         return self._min_y
@@ -202,46 +143,11 @@ class PolyLine:
             return True
 
     @staticmethod
-    def between(a: Point, b: Point, c: Point) -> bool:
-        if (a.x is None or a.y is None or b.x is None or b.y is None or c.x is None or c.y is None):
-            return None
-        crossproduct = (c.y - a.y) * (b.x - a.x) - (c.x - a.x) * (b.y - a.y)
-        if abs(crossproduct) > 1e-12:
-            return False
-        dotproduct = (c.x - a.y) * (b.x - a.x) + (c.y - a.y) * (b.y - a.y)
-        if dotproduct < 0:
-            return False
-        squaredlengthba = (b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y)
-        if dotproduct > squaredlengthba:
-            return False
-        return True
-
-    @staticmethod
     def intersection(pl_1, pl_2) -> tuple:
         pl_1 = pl_1.points
         pl_2 = pl_2.points
-        # we have two points
-        if len(pl_1) == 1 and len(pl_2) == 1:
-            if pl_1[0][0] == pl_2[0][0] and pl_1[0][1] == pl_2[0][1]:
-                quantity = pl_1[0][0]
-                price = pl_1[0][1]
-                return quantity, price
-        # we have one point and line segments
-        elif len(pl_1) == 1 or len(pl_2) == 1:
-            if len(pl_1) == 1:
-                point = pl_1[0]
-                line = pl_2
-            else:
-                point = pl_2[0]
-                line = pl_1
-            for j, pl_2_1 in enumerate(line[:-1]):
-                pl_2_2 = line[j + 1]
-                if PolyLine.between(pl_2_1, pl_2_2, point):
-                    quantity = point[0]
-                    price = point[1]
-                    return quantity, price
-        # we have line segments
-        elif len(pl_1) > 1 and len(pl_2) > 1:
+
+        if len(pl_1) > 1 and len(pl_2) > 1:
             for i, pl_1_1 in enumerate(pl_1[:-1]):
                 pl_1_2 = pl_1[i + 1]
                 for j, pl_2_1 in enumerate(pl_2[:-1]):
@@ -249,6 +155,9 @@ class PolyLine:
                     if PolyLine.segment_intersects((pl_1_1, pl_1_2), (pl_2_1, pl_2_2)):
                         quantity, price = PolyLine.segment_intersection((pl_1_1, pl_1_2), (pl_2_1, pl_2_2))
                         return quantity, price
+        else:
+            return None, None
+        # we are here because lines don't intesect    
         p1_qmax = max([point[0] for point in pl_1])
         p1_qmin = min([point[0] for point in pl_1])
 
@@ -264,19 +173,15 @@ class PolyLine:
         if p1_pmax <= p2_pmax and p1_pmax <=p2_pmin:
             quantity = p1_qmin
             price = p2_pmax
-
         elif p2_pmin <=p1_pmin and p2_pmax <=p1_pmin:
             quantity = p1_qmax
             price = p2_pmin
-
         elif p2_qmax >= p1_qmin and p2_qmax >= p1_qmax:
             quantity = np.mean([point[0] for point in pl_1])
             price = np.mean([point[1] for point in pl_1])
-
         elif p2_qmin <= p1_qmin and p2_qmin <= p1_qmax:
             quantity = p2_qmax
             price = p1_pmax
-
         else:
             price = None
             quantity = None
