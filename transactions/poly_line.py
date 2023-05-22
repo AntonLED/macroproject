@@ -42,6 +42,18 @@ class PolyLine:
                 if p.x is None or p.y is None:
                     result = True
         return result
+    
+    def clear(self) -> None:
+        if self.points:
+            self.points.clear()
+        self.xs = None
+        self.ys = None
+        self.xsSortedByY = None
+        self.ysSortedByY = None
+        self._min_x = None
+        self._max_x = None
+        self._min_y = None
+        self._max_y = None
 
     @staticmethod
     def min(x1, x2):
@@ -143,7 +155,7 @@ class PolyLine:
             return True
 
     @staticmethod
-    def intersection(pl_1, pl_2) -> tuple:
+    def intersection(pl_1, pl_2) -> Point:
         pl_1 = pl_1.points
         pl_2 = pl_2.points
 
@@ -154,7 +166,7 @@ class PolyLine:
                     pl_2_2 = pl_2[j + 1]
                     if PolyLine.segment_intersects((pl_1_1, pl_1_2), (pl_2_1, pl_2_2)):
                         quantity, price = PolyLine.segment_intersection((pl_1_1, pl_1_2), (pl_2_1, pl_2_2))
-                        return quantity, price
+                        return Point(quantity, price)
         else:
             return None, None
         # we are here because lines don't intesect    
@@ -186,4 +198,4 @@ class PolyLine:
             price = None
             quantity = None
 
-        return quantity, price
+        return Point(quantity, price)

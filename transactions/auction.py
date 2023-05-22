@@ -6,9 +6,8 @@ class Auction():
     def __init__(self, name) -> None:
         self.name = name
 
-    def get_result(self, self_demand_curve: PolyLine, bidders_curves: list[Point]) -> Point:
+    def get_result(self, self_demand_curve: PolyLine, aggregate_bid_curve: PolyLine) -> Point:
         try:
-            aggregated_bidders_curve = PolyLine.combine_segments(bidders_curves)
-            return PolyLine.intersection(self_demand_curve, aggregated_bidders_curve)
+            return PolyLine.intersection(self_demand_curve, aggregate_bid_curve)
         except BaseException:
             return None

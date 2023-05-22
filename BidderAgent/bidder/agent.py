@@ -69,7 +69,7 @@ class Asker(Agent):
             msg = {}
             msg["from"] = self.name
             msg["to"] = message["from"]
-            msg["data"] = self.perform_mpo()
+            msg["data"] = self.perform_mpo(message["from"])
             self.vip.pubsub.publish(
                 peer="pubusb",
                 topic=BID_OFFER_TOPIC,
@@ -89,11 +89,11 @@ class Asker(Agent):
     def market_state_callback(self, peer, sender, bus, topic, headers, message):
         pass
 
-    def perform_mpo(self):
+    def perform_mpo(self, name: str):
         """
-        Here we are solving Markorviz Portfolio Optimization problem and returns results
+        Here we are solving Markorvitz Portfolio Optimization problem and returns results
         """
-        return [1.0 + random.random(), -1.0 + random.random()]
+        return [1.5, 6.0]
     
 
 def main():
