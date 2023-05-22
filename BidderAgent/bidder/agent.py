@@ -11,6 +11,7 @@ import random
 from volttron.platform.agent import utils
 from volttron.platform.vip.agent import Agent, Core
 from volttron.platform.transactions.topics import DEMAND_BID_TOPIC, BID_OFFER_TOPIC, MARKET_CLEARING_TOPIC, MARKET_STATE_TOPIC
+from volttron.platform.transations.mpo_solver import Solver
 
 _log = logging.getLogger(__name__)
 utils.setup_logging()
@@ -24,17 +25,22 @@ def asker(config_path, **kwargs):
         config = {}
 
     name = config.get("name", "BidderAgent")
+    rorm = config.get("rorm", 0.0)
+    price = config.get("price", 1.0)
 
     if not config:
         _log.info("Using Agent defaults for starting configuration.")
 
-    return Asker(name, **kwargs)
+    return Asker(name, rorm, price, **kwargs)
 
 
 class Asker(Agent):
-    def __init__(self, name="BidderAgent", **kwargs):
+    def __init__(self, name="BidderAgent", rorm=0.0, price=1.0, **kwargs):
         super(Asker, self).__init__(**kwargs)
         self.name = name
+        self.rorm = rorm
+        self.price = price
+        self.solver = Solver(rorm, price)
 
     @Core.receiver("onstart")
     def onstart(self, sender, **kwargs):
@@ -69,7 +75,7 @@ class Asker(Agent):
             msg = {}
             msg["from"] = self.name
             msg["to"] = message["from"]
-            msg["data"] = self.perform_mpo(message["from"])
+            msg["data"] = self.perform_mpo(message["data"])
             self.vip.pubsub.publish(
                 peer="pubusb",
                 topic=BID_OFFER_TOPIC,
@@ -89,11 +95,14 @@ class Asker(Agent):
     def market_state_callback(self, peer, sender, bus, topic, headers, message):
         pass
 
-    def perform_mpo(self, name: str):
+    def perform_mpo(self, curve):
         """
         Here we are solving Markorvitz Portfolio Optimization problem and returns results
+
+        
         """
-        return [1.5, 6.0]
+        
+        return solver.solve(curve)
     
 
 def main():
