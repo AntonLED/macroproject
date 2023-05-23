@@ -49,14 +49,8 @@ class Solver():
         G = np.concatenate( (-1.0 * mean_rorms[:, np.newaxis].transpose(), np.identity(n),
                             -1.0 * np.identity(n)))
         G = matrix(G)
-        h = np.array([self.rorm] + [1.0] * L + [0.0] * L)
+        h = np.array([-self.rorm] + [1.0] * L + [0.0] * L)
         h = matrix(h)
+        options['show_progress'] = False
         w = qp(Q, -r, G, h, A, b)['x']
         return [[weight * self.power, self.price] for weight in w]
-
-s = Solver(10.0, 1.0, 1.0)
-curves = [([0, 1, 2, 3, 4, 6], [15, 5, 3, 1, 1, 0]),
-          ([0, 1, 2, 3, 4, 5, 20], [100, 50, 30, 20, 10, 5, 0]),
-          ([0, 1, 2, 3, 4, 6], [15, 5, 3, 1, 1, 0]),
-          ([0, 1, 2, 3, 4, 6], [15, 5, 3, 1, 1, 0])]
-print(s.solve(curves))
