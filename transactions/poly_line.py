@@ -106,7 +106,7 @@ class PolyLine:
             else:
                 self.xsSortedByY = self.xs[::-1]
                 self.ysSortedByY = self.ys[::-1]
-        return self.xs, self.ys
+        return self.xs[::-1], self.ys[::-1]
 
     def min_y(self):
         return self._min_y

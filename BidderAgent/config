@@ -1,3 +1,6 @@
 {
-  "name": "Bidder1"
+  "name": "bidderagent-0.1_1",
+  "rorm": 0.5, 
+  "price": 1.0,
+  "power": 5.0
 }

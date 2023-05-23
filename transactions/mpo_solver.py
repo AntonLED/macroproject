@@ -49,7 +49,7 @@ class Solver():
         G = np.concatenate( (-1.0 * mean_rorms[:, np.newaxis].transpose(), np.identity(n),
                             -1.0 * np.identity(n)))
         G = matrix(G)
-        h = np.array([-self.rorm] + [1.0] * L + [0.0] * L)
+        h = np.array([self.rorm] + [1.0] * L + [0.0] * L)
         h = matrix(h)
         options['show_progress'] = False
         w = qp(Q, -r, G, h, A, b)['x']

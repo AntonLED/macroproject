@@ -65,7 +65,8 @@ class Asker(Agent):
 
     @PubSub.subscribe("pubsub", BID_OFFER_TOPIC)
     def bid_offer_callback(self, peer, sender, bus, topic, headers, message):
-        self.bid_offer_results[message["from"]] = [message["data"][0], message["data"][1]] 
+        if message["to"] == self.name:
+            self.bid_offer_results[message["from"]] = [message["data"][0], message["data"][1]] 
 
     @PubSub.subscribe("pubsub", MARKET_STATE_TOPIC)
     def market_state_callback(self, peer, sender, bus, topic, headers, message):
@@ -148,6 +149,7 @@ class Asker(Agent):
 
     def market_clearing_trigger(self):
         bidder_curves = []
+        _log.debug("\n\n\n\n" + str(self.bid_offer_results) + "\n\n\n\n")
         for data in self.bid_offer_results.values():
             bidder_curve = PolyLine()
             bidder_curve.add(Point(0.0, data[1]))
@@ -155,6 +157,8 @@ class Asker(Agent):
             bidder_curves.append(bidder_curve)
         aggregate_bid_curve = PolyLine.combine_segments(bidder_curves)
         clear_point = self.auction.get_result(self.curve, aggregate_bid_curve)
+
+        # _log.debug("\n\tClearing point \n\n" + str(clear_point.x) + " " + str(clear_point.y) + "\n\n\n" )
 
         for bidder_name in self.bid_offer_results.keys():
             msg = {}
